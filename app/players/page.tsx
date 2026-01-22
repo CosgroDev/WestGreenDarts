@@ -1,10 +1,31 @@
 import { Navigation } from '@/components/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { PlayerCard } from '@/components/player-card'
 import { UserPlus } from 'lucide-react'
 import Link from 'next/link'
+import { prisma } from '@/lib/prisma'
 
-export default function PlayersPage() {
+export const dynamic = 'force-dynamic'
+
+async function getPlayers() {
+  try {
+    const players = await prisma.player.findMany({
+      orderBy: [
+        { isActive: 'desc' },
+        { name: 'asc' },
+      ],
+    })
+    return players
+  } catch (error) {
+    console.error('Error fetching players:', error)
+    return []
+  }
+}
+
+export default async function PlayersPage() {
+  const players = await getPlayers()
+
   return (
     <>
       <Navigation />
@@ -28,30 +49,39 @@ export default function PlayersPage() {
             </Button>
           </div>
 
-          {/* Empty State */}
-          <Card>
-            <CardHeader>
-              <CardTitle>No Players Yet</CardTitle>
-              <CardDescription>
-                Get started by adding your first team member
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto">
-                  <UserPlus className="h-8 w-8 text-muted-foreground" />
+          {players.length === 0 ? (
+            /* Empty State */
+            <Card>
+              <CardHeader>
+                <CardTitle>No Players Yet</CardTitle>
+                <CardDescription>
+                  Get started by adding your first team member
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto">
+                    <UserPlus className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <p className="text-muted-foreground max-w-md">
+                    Add players to your team with their darts equipment details and start tracking their performance.
+                  </p>
+                  <Button asChild>
+                    <Link href="/players/new">
+                      Add Your First Player
+                    </Link>
+                  </Button>
                 </div>
-                <p className="text-muted-foreground max-w-md">
-                  Add players to your team with their darts equipment details and start tracking their performance.
-                </p>
-                <Button asChild>
-                  <Link href="/players/new">
-                    Add Your First Player
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            /* Players Grid */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {players.map((player) => (
+                <PlayerCard key={player.id} player={player} />
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </>
