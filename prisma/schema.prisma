@@ -1,0 +1,189 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Authentication
+model AppSettings {
+  id        String   @id @default(uuid())
+  pinHash   String   // Hashed PIN for authentication
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Player Management
+model Player {
+  id          String   @id @default(uuid())
+  name        String
+  avatarUrl   String?
+  isActive    Boolean  @default(true)
+
+  // Darts profile
+  dartModel   String?
+  stemLength  String?
+  flightType  String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  games       Game[]
+  statistics  PlayerStatistics[]
+}
+
+// Season Management
+model Season {
+  id          String    @id @default(uuid())
+  name        String    @unique // e.g., "25/26"
+  startDate   DateTime?
+  endDate     DateTime?
+  isCurrent   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  fixtures    Fixture[]
+}
+
+// Fixture Management
+model Fixture {
+  id            String    @id @default(uuid())
+  seasonId      String
+  date          DateTime
+  opponentTeam  String
+  isHome        Boolean   @default(true)
+  venue         String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  season        Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  games         Game[]
+}
+
+// Game (501)
+model Game {
+  id              String    @id @default(uuid())
+  fixtureId       String
+  playerId        String
+  opponentName    String
+  isComplete      Boolean   @default(false)
+  playerWon       Boolean?
+  playerStarted   Boolean   // True if West Green player started first
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+
+  // Relations
+  fixture         Fixture   @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  player          Player    @relation(fields: [playerId], references: [id])
+  legs            Leg[]
+}
+
+// Leg (single leg of 501)
+model Leg {
+  id              String    @id @default(uuid())
+  gameId          String
+  legNumber       Int       // 1, 2, 3, etc.
+  playerScore     Int       @default(501)
+  opponentScore   Int       @default(501)
+  playerWon       Boolean?
+  playerStarted   Boolean   // True if West Green player started this leg
+  totalDarts      Int       @default(0) // Total darts thrown by player in this leg
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+
+  // Relations
+  game            Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  visits          Visit[]
+}
+
+// Visit (3 dart throw)
+model Visit {
+  id              String    @id @default(uuid())
+  legId           String
+  visitNumber     Int       // 1, 2, 3, etc. (order in the leg)
+  isPlayer        Boolean   // True for West Green player, False for opponent
+
+  // Individual dart scores
+  dart1           Int?
+  dart2           Int?
+  dart3           Int?
+
+  // Calculated
+  totalScore      Int       // Sum of dart1 + dart2 + dart3
+  isCheckout      Boolean   @default(false)
+  checkoutScore   Int?      // If this was a successful checkout, the amount
+
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  leg             Leg       @relation(fields: [legId], references: [id], onDelete: Cascade)
+}
+
+// Player Statistics (aggregated per season)
+model PlayerStatistics {
+  id                        String   @id @default(uuid())
+  playerId                  String
+  seasonId                  String?  // Null for all-time stats
+
+  // Basic stats
+  totalLegs                 Int      @default(0)
+  legsWon                   Int      @default(0)
+  totalGames                Int      @default(0)
+  gamesWon                  Int      @default(0)
+
+  // Averages
+  threeDartAverage          Float    @default(0)
+  firstNineAverage          Float    @default(0)
+
+  // Score distribution
+  scores60Plus              Int      @default(0)
+  scores80Plus              Int      @default(0)
+  scores100Plus             Int      @default(0)
+  scores120Plus             Int      @default(0)
+  scores140Plus             Int      @default(0)
+  scores170Plus             Int      @default(0)
+  total180s                 Int      @default(0)
+
+  // Finish stats
+  highFinish                Int      @default(0)
+  finishes100Plus           Int      @default(0)
+  bestLeg                   Int?     // Fewest darts to complete a leg
+  worstLeg                  Int?     // Most darts to complete a leg
+
+  // Performance metrics
+  checkoutPercentage        Float    @default(0)
+  checkoutPrediction        Float    @default(0)
+  keepPercentage            Float    @default(0)
+  keepPrediction            Float    @default(0)
+  breakPercentage           Float    @default(0)
+  breakPrediction           Float    @default(0)
+
+  // Supporting data for calculations
+  totalVisits               Int      @default(0)
+  totalPointsScored         Int      @default(0)
+  checkoutAttempts          Int      @default(0)
+  successfulCheckouts       Int      @default(0)
+  legsStarted               Int      @default(0)
+  legsWonWhenStarted        Int      @default(0)
+  legsNotStarted            Int      @default(0)
+  legsWonWhenNotStarted     Int      @default(0)
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  // Relations
+  player                    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, seasonId])
+}
