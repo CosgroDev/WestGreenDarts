@@ -847,6 +847,208 @@ export function updateGame(id: string, data: Partial<Omit<Game, 'id' | 'createdA
   }
 }
 
+export function getAllGamesWithRelations(fixtureId?: string): GameWithRelations[] {
+  const db = getDb()
+  try {
+    let query = `
+      SELECT
+        g.*,
+        p.id as player_id,
+        p.name as player_name,
+        p.avatarUrl as player_avatarUrl,
+        p.isActive as player_isActive,
+        p.dartModel as player_dartModel,
+        p.stemLength as player_stemLength,
+        p.flightType as player_flightType,
+        p.createdAt as player_createdAt,
+        p.updatedAt as player_updatedAt,
+        f.id as fixture_id,
+        f.seasonId as fixture_seasonId,
+        f.date as fixture_date,
+        f.opponentTeam as fixture_opponentTeam,
+        f.isHome as fixture_isHome,
+        f.venue as fixture_venue,
+        f.notes as fixture_notes,
+        f.createdAt as fixture_createdAt,
+        f.updatedAt as fixture_updatedAt,
+        s.id as season_id,
+        s.name as season_name,
+        s.startDate as season_startDate,
+        s.endDate as season_endDate,
+        s.isCurrent as season_isCurrent,
+        s.createdAt as season_createdAt,
+        s.updatedAt as season_updatedAt
+      FROM Game g
+      LEFT JOIN Player p ON g.playerId = p.id
+      LEFT JOIN Fixture f ON g.fixtureId = f.id
+      LEFT JOIN Season s ON f.seasonId = s.id
+    `
+
+    let params: any[] = []
+    if (fixtureId) {
+      query += ' WHERE g.fixtureId = ?'
+      params.push(fixtureId)
+    }
+
+    query += ' ORDER BY g.createdAt DESC'
+
+    const gameRows = db.prepare(query).all(...params)
+
+    return gameRows.map(row => {
+      const gameId = row.id
+      const legs = db.prepare('SELECT * FROM Leg WHERE gameId = ? ORDER BY legNumber').all(gameId)
+
+      return {
+        id: row.id,
+        fixtureId: row.fixtureId,
+        playerId: row.playerId,
+        opponentName: row.opponentName,
+        isComplete: Boolean(row.isComplete),
+        playerWon: row.playerWon === null ? null : Boolean(row.playerWon),
+        playerStarted: Boolean(row.playerStarted),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        completedAt: row.completedAt,
+        player: {
+          id: row.player_id,
+          name: row.player_name,
+          avatarUrl: row.player_avatarUrl,
+          isActive: Boolean(row.player_isActive),
+          dartModel: row.player_dartModel,
+          stemLength: row.player_stemLength,
+          flightType: row.player_flightType,
+          createdAt: row.player_createdAt,
+          updatedAt: row.player_updatedAt,
+        },
+        fixture: {
+          id: row.fixture_id,
+          seasonId: row.fixture_seasonId,
+          date: row.fixture_date,
+          opponentTeam: row.fixture_opponentTeam,
+          isHome: Boolean(row.fixture_isHome),
+          venue: row.fixture_venue,
+          notes: row.fixture_notes,
+          createdAt: row.fixture_createdAt,
+          updatedAt: row.fixture_updatedAt,
+          season: {
+            id: row.season_id,
+            name: row.season_name,
+            startDate: row.season_startDate,
+            endDate: row.season_endDate,
+            isCurrent: Boolean(row.season_isCurrent),
+            createdAt: row.season_createdAt,
+            updatedAt: row.season_updatedAt,
+          }
+        },
+        legs: legs.map(leg => ({
+          ...leg,
+          playerStarted: Boolean(leg.playerStarted),
+          playerWon: leg.playerWon === null ? null : Boolean(leg.playerWon),
+        }))
+      }
+    }) as GameWithRelations[]
+  } finally {
+    db.close()
+  }
+}
+
+export interface GameWithFullDetails extends Game {
+  player: Player
+  legs: LegWithVisits[]
+}
+
+export function getGameWithFullDetails(id: string): GameWithFullDetails | null {
+  const db = getDb()
+  try {
+    const game = db.prepare('SELECT * FROM Game WHERE id = ?').get(id)
+    if (!game) return null
+
+    const player = db.prepare('SELECT * FROM Player WHERE id = ?').get(game.playerId)
+    const legRows = db.prepare('SELECT * FROM Leg WHERE gameId = ? ORDER BY legNumber').all(id)
+
+    const legs = legRows.map((leg: any) => {
+      const visits = db.prepare('SELECT * FROM Visit WHERE legId = ? ORDER BY visitNumber').all(leg.id)
+      return {
+        ...leg,
+        playerStarted: Boolean(leg.playerStarted),
+        playerWon: leg.playerWon === null ? null : Boolean(leg.playerWon),
+        visits: visits.map((visit: any) => ({
+          ...visit,
+          isPlayer: Boolean(visit.isPlayer),
+          isCheckout: Boolean(visit.isCheckout),
+        }))
+      }
+    })
+
+    return {
+      ...game,
+      isComplete: Boolean(game.isComplete),
+      playerStarted: Boolean(game.playerStarted),
+      playerWon: game.playerWon === null ? null : Boolean(game.playerWon),
+      player: {
+        ...player,
+        isActive: Boolean(player.isActive),
+      },
+      legs
+    } as GameWithFullDetails
+  } finally {
+    db.close()
+  }
+}
+
+export function createGameWithFirstLeg(data: {
+  fixtureId: string
+  playerId: string
+  opponentName: string
+  playerStarted: boolean
+}): GameWithFullDetails {
+  const db = getDb()
+  try {
+    const gameId = generateId()
+    const timestamp = now()
+
+    // Create game
+    db.prepare(`
+      INSERT INTO Game (id, fixtureId, playerId, opponentName, isComplete, playerWon, playerStarted, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, 0, NULL, ?, ?, ?)
+    `).run(
+      gameId,
+      data.fixtureId,
+      data.playerId,
+      data.opponentName,
+      data.playerStarted ? 1 : 0,
+      timestamp,
+      timestamp
+    )
+
+    // Create first leg
+    const legId = generateId()
+    db.prepare(`
+      INSERT INTO Leg (id, gameId, legNumber, playerScore, opponentScore, playerWon, playerStarted, totalDarts, createdAt, updatedAt)
+      VALUES (?, ?, 1, 501, 501, NULL, ?, 0, ?, ?)
+    `).run(
+      legId,
+      gameId,
+      data.playerStarted ? 1 : 0,
+      timestamp,
+      timestamp
+    )
+
+    return getGameWithFullDetails(gameId)!
+  } finally {
+    db.close()
+  }
+}
+
+export function deleteGame(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM Game WHERE id = ?').run(id)
+  } finally {
+    db.close()
+  }
+}
+
 // ============================================================================
 // LEGS
 // ============================================================================
@@ -983,6 +1185,15 @@ export function updateLeg(id: string, data: Partial<Omit<Leg, 'id' | 'createdAt'
   }
 }
 
+export function deleteLeg(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM Leg WHERE id = ?').run(id)
+  } finally {
+    db.close()
+  }
+}
+
 // ============================================================================
 // VISITS
 // ============================================================================
@@ -1071,6 +1282,15 @@ export function deleteLastVisit(legId: string): void {
         LIMIT 1
       )
     `).run(legId)
+  } finally {
+    db.close()
+  }
+}
+
+export function deleteVisit(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM Visit WHERE id = ?').run(id)
   } finally {
     db.close()
   }

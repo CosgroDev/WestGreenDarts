@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getAllGamesWithRelations, createGameWithFirstLeg } from '@/lib/db-direct'
 
 // GET games (optionally filtered by fixture)
 export async function GET(request: NextRequest) {
@@ -7,21 +7,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const fixtureId = searchParams.get('fixtureId')
 
-    const games = await prisma.game.findMany({
-      where: fixtureId ? { fixtureId } : undefined,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        player: true,
-        fixture: {
-          include: {
-            season: true,
-          },
-        },
-        legs: {
-          orderBy: { legNumber: 'asc' },
-        },
-      },
-    })
+    const games = getAllGamesWithRelations(fixtureId || undefined)
 
     return NextResponse.json(games)
   } catch (error) {
@@ -60,27 +46,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create game with first leg (Best of 2 format)
-    const game = await prisma.game.create({
-      data: {
-        fixtureId,
-        playerId,
-        opponentName: opponentName.trim(),
-        playerStarted: playerStartsFirst !== undefined ? playerStartsFirst : true,
-        isComplete: false,
-        legs: {
-          create: {
-            legNumber: 1,
-            playerScore: 501,
-            opponentScore: 501,
-            playerStarted: playerStartsFirst !== undefined ? playerStartsFirst : true,
-          },
-        },
-      },
-      include: {
-        player: true,
-        legs: true,
-      },
+    const game = createGameWithFirstLeg({
+      fixtureId,
+      playerId,
+      opponentName: opponentName.trim(),
+      playerStarted: playerStartsFirst !== undefined ? playerStartsFirst : true,
     })
 
     return NextResponse.json(game, { status: 201 })

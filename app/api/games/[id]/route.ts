@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getGameWithFullDetails, deleteGame } from '@/lib/db-direct'
 
 // GET single game with all details
 export async function GET(
@@ -7,25 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const game = await prisma.game.findUnique({
-      where: { id: params.id },
-      include: {
-        player: true,
-        fixture: {
-          include: {
-            season: true,
-          },
-        },
-        legs: {
-          orderBy: { legNumber: 'asc' },
-          include: {
-            visits: {
-              orderBy: { visitNumber: 'asc' },
-            },
-          },
-        },
-      },
-    })
+    const game = getGameWithFullDetails(params.id)
 
     if (!game) {
       return NextResponse.json(
@@ -50,10 +32,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.game.delete({
-      where: { id: params.id },
-    })
-
+    deleteGame(params.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting game:', error)

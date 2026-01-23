@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import {
+  getGameWithFullDetails,
+  updateLeg,
+  updateGame,
+  deleteLeg,
+  deleteVisit,
+} from '@/lib/db-direct'
 
 // POST undo last visit
 export async function POST(
@@ -8,19 +14,7 @@ export async function POST(
 ) {
   try {
     // Get the game with all legs and visits
-    const game = await prisma.game.findUnique({
-      where: { id: params.id },
-      include: {
-        legs: {
-          orderBy: { legNumber: 'desc' },
-          include: {
-            visits: {
-              orderBy: { visitNumber: 'desc' },
-            },
-          },
-        },
-      },
-    })
+    const game = getGameWithFullDetails(params.id)
 
     if (!game) {
       return NextResponse.json(
@@ -29,13 +23,15 @@ export async function POST(
       )
     }
 
-    // Find the last visit across all legs
+    // Find the last visit across all legs (reverse order)
     let lastVisit = null
     let legWithLastVisit = null
 
-    for (const leg of game.legs) {
+    const legsReversed = [...game.legs].reverse()
+    for (const leg of legsReversed) {
       if (leg.visits.length > 0) {
-        lastVisit = leg.visits[0]
+        const visitsReversed = [...leg.visits].reverse()
+        lastVisit = visitsReversed[0]
         legWithLastVisit = leg
         break
       }
@@ -50,31 +46,24 @@ export async function POST(
 
     // If the leg was completed by this visit, reopen it
     if (lastVisit.isCheckout && legWithLastVisit.playerWon !== null) {
-      await prisma.leg.update({
-        where: { id: legWithLastVisit.id },
-        data: {
-          playerWon: null,
-          completedAt: null,
-        },
+      updateLeg(legWithLastVisit.id, {
+        playerWon: null,
+        completedAt: null,
       })
 
       // If game was completed, reopen it
       if (game.isComplete) {
-        await prisma.game.update({
-          where: { id: game.id },
-          data: {
-            isComplete: false,
-            playerWon: null,
-            completedAt: null,
-          },
+        updateGame(game.id, {
+          isComplete: false,
+          playerWon: null,
+          completedAt: null,
         })
       }
 
       // If this was leg 2 and was just created after leg 1 completed, delete leg 2
-      if (legWithLastVisit.legNumber === 2 && legWithLastVisit.visits.length === 0) {
-        await prisma.leg.delete({
-          where: { id: legWithLastVisit.id },
-        })
+      // Check if it has only the one visit we're about to delete
+      if (legWithLastVisit.legNumber === 2 && legWithLastVisit.visits.length === 1) {
+        deleteLeg(legWithLastVisit.id)
       }
     }
 
@@ -87,47 +76,27 @@ export async function POST(
     const originalScore = currentScore + lastVisit.totalScore
 
     // Check if this was a bust (score didn't change)
-    const wasBust = currentScore === (lastVisit.isPlayer ? 501 : legWithLastVisit.opponentScore)
+    // If it was a bust, the score would still be at the same value
+    const wasBust = currentScore === originalScore
 
     if (!wasBust) {
       if (lastVisit.isPlayer) {
-        await prisma.leg.update({
-          where: { id: legWithLastVisit.id },
-          data: {
-            playerScore: originalScore,
-            totalDarts: { decrement: 3 },
-          },
+        updateLeg(legWithLastVisit.id, {
+          playerScore: originalScore,
+          totalDarts: legWithLastVisit.totalDarts - 3,
         })
       } else {
-        await prisma.leg.update({
-          where: { id: legWithLastVisit.id },
-          data: {
-            opponentScore: originalScore,
-          },
+        updateLeg(legWithLastVisit.id, {
+          opponentScore: originalScore,
         })
       }
     }
 
     // Delete the visit
-    await prisma.visit.delete({
-      where: { id: lastVisit.id },
-    })
+    deleteVisit(lastVisit.id)
 
     // Return updated game state
-    const updatedGame = await prisma.game.findUnique({
-      where: { id: params.id },
-      include: {
-        player: true,
-        legs: {
-          orderBy: { legNumber: 'asc' },
-          include: {
-            visits: {
-              orderBy: { visitNumber: 'asc' },
-            },
-          },
-        },
-      },
-    })
+    const updatedGame = getGameWithFullDetails(params.id)
 
     return NextResponse.json(updatedGame)
   } catch (error) {
