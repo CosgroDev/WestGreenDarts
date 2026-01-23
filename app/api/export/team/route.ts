@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getPlayerStatisticsWithRelations } from '@/lib/db-direct'
 import { generateCSV, playerStatsColumns } from '@/lib/csv-generator'
 
 // GET export team statistics (all players) as CSV
@@ -9,18 +9,9 @@ export async function GET(request: NextRequest) {
     const seasonId = searchParams.get('seasonId')
 
     // Fetch all active player statistics
-    const playerStats = await prisma.playerStatistics.findMany({
-      where: {
-        seasonId: seasonId || null,
-        player: { isActive: true },
-      },
-      include: {
-        player: true,
-        season: true,
-      },
-      orderBy: {
-        threeDartAverage: 'desc',
-      },
+    const playerStats = getPlayerStatisticsWithRelations({
+      seasonId: seasonId || null,
+      activePlayersOnly: true,
     })
 
     // Transform data for CSV export

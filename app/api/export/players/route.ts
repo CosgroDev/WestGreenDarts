@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getPlayerStatisticsWithRelations } from '@/lib/db-direct'
 import { generateCSV, playerStatsColumns } from '@/lib/csv-generator'
 
 // GET export player statistics as CSV
@@ -9,27 +9,10 @@ export async function GET(request: NextRequest) {
     const seasonId = searchParams.get('seasonId')
     const playerId = searchParams.get('playerId')
 
-    // Build where clause
-    const where: any = {}
-    if (seasonId) {
-      where.seasonId = seasonId
-    } else {
-      where.seasonId = null // All-time stats
-    }
-    if (playerId) {
-      where.playerId = playerId
-    }
-
     // Fetch player statistics
-    const playerStats = await prisma.playerStatistics.findMany({
-      where,
-      include: {
-        player: true,
-        season: true,
-      },
-      orderBy: {
-        threeDartAverage: 'desc',
-      },
+    const playerStats = getPlayerStatisticsWithRelations({
+      seasonId: seasonId || null,
+      playerId: playerId || undefined,
     })
 
     // Transform data for CSV export

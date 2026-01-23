@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getCompletedGamesForExport } from '@/lib/db-direct'
 import { generateCSV, gameDataColumns } from '@/lib/csv-generator'
 
 // GET export game data as CSV
@@ -10,38 +10,11 @@ export async function GET(request: NextRequest) {
     const playerId = searchParams.get('playerId')
     const fixtureId = searchParams.get('fixtureId')
 
-    // Build where clause
-    const where: any = {
-      isComplete: true,
-    }
-
-    if (playerId) {
-      where.playerId = playerId
-    }
-
-    if (fixtureId) {
-      where.fixtureId = fixtureId
-    } else if (seasonId) {
-      where.fixture = {
-        seasonId,
-      }
-    }
-
     // Fetch completed games
-    const games = await prisma.game.findMany({
-      where,
-      include: {
-        player: true,
-        fixture: {
-          include: {
-            season: true,
-          },
-        },
-        legs: true,
-      },
-      orderBy: {
-        completedAt: 'desc',
-      },
+    const games = getCompletedGamesForExport({
+      seasonId: seasonId || undefined,
+      playerId: playerId || undefined,
+      fixtureId: fixtureId || undefined,
     })
 
     // Transform data for CSV export

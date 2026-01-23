@@ -1616,5 +1616,278 @@ export function deletePlayerStatistics(playerId: string, seasonId: string | null
   }
 }
 
+// ============================================================================
+// EXPORT HELPERS
+// ============================================================================
+
+export interface PlayerStatisticsWithRelations extends PlayerStatistics {
+  player: Player
+  season: Season | null
+}
+
+export function getPlayerStatisticsWithRelations(filters?: {
+  seasonId?: string | null
+  playerId?: string
+  activePlayersOnly?: boolean
+}): PlayerStatisticsWithRelations[] {
+  const db = getDb()
+  try {
+    let query = `
+      SELECT
+        ps.*,
+        p.id as player_id,
+        p.name as player_name,
+        p.avatarUrl as player_avatarUrl,
+        p.isActive as player_isActive,
+        p.dartModel as player_dartModel,
+        p.stemLength as player_stemLength,
+        p.flightType as player_flightType,
+        p.createdAt as player_createdAt,
+        p.updatedAt as player_updatedAt,
+        s.id as season_id,
+        s.name as season_name,
+        s.startDate as season_startDate,
+        s.endDate as season_endDate,
+        s.isCurrent as season_isCurrent,
+        s.createdAt as season_createdAt,
+        s.updatedAt as season_updatedAt
+      FROM PlayerStatistics ps
+      LEFT JOIN Player p ON ps.playerId = p.id
+      LEFT JOIN Season s ON ps.seasonId = s.id
+      WHERE 1=1
+    `
+
+    const params: any[] = []
+
+    if (filters?.seasonId !== undefined) {
+      if (filters.seasonId === null) {
+        query += ' AND ps.seasonId IS NULL'
+      } else {
+        query += ' AND ps.seasonId = ?'
+        params.push(filters.seasonId)
+      }
+    }
+
+    if (filters?.playerId) {
+      query += ' AND ps.playerId = ?'
+      params.push(filters.playerId)
+    }
+
+    if (filters?.activePlayersOnly) {
+      query += ' AND p.isActive = 1'
+    }
+
+    query += ' ORDER BY ps.threeDartAverage DESC'
+
+    const rows = db.prepare(query).all(...params)
+
+    return rows.map(row => ({
+      id: row.id,
+      playerId: row.playerId,
+      seasonId: row.seasonId,
+      totalLegs: row.totalLegs,
+      legsWon: row.legsWon,
+      totalGames: row.totalGames,
+      gamesWon: row.gamesWon,
+      threeDartAverage: row.threeDartAverage,
+      firstNineAverage: row.firstNineAverage,
+      scores60Plus: row.scores60Plus,
+      scores80Plus: row.scores80Plus,
+      scores100Plus: row.scores100Plus,
+      scores120Plus: row.scores120Plus,
+      scores140Plus: row.scores140Plus,
+      scores170Plus: row.scores170Plus,
+      total180s: row.total180s,
+      highFinish: row.highFinish,
+      finishes100Plus: row.finishes100Plus,
+      bestLeg: row.bestLeg,
+      worstLeg: row.worstLeg,
+      checkoutPercentage: row.checkoutPercentage,
+      checkoutPrediction: row.checkoutPrediction,
+      keepPercentage: row.keepPercentage,
+      keepPrediction: row.keepPrediction,
+      breakPercentage: row.breakPercentage,
+      breakPrediction: row.breakPrediction,
+      totalVisits: row.totalVisits,
+      totalPointsScored: row.totalPointsScored,
+      checkoutAttempts: row.checkoutAttempts,
+      successfulCheckouts: row.successfulCheckouts,
+      legsStarted: row.legsStarted,
+      legsWonWhenStarted: row.legsWonWhenStarted,
+      legsNotStarted: row.legsNotStarted,
+      legsWonWhenNotStarted: row.legsWonWhenNotStarted,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      player: {
+        id: row.player_id,
+        name: row.player_name,
+        avatarUrl: row.player_avatarUrl,
+        isActive: Boolean(row.player_isActive),
+        dartModel: row.player_dartModel,
+        stemLength: row.player_stemLength,
+        flightType: row.player_flightType,
+        createdAt: row.player_createdAt,
+        updatedAt: row.player_updatedAt,
+      },
+      season: row.season_id ? {
+        id: row.season_id,
+        name: row.season_name,
+        startDate: row.season_startDate,
+        endDate: row.season_endDate,
+        isCurrent: Boolean(row.season_isCurrent),
+        createdAt: row.season_createdAt,
+        updatedAt: row.season_updatedAt,
+      } : null
+    })) as PlayerStatisticsWithRelations[]
+  } finally {
+    db.close()
+  }
+}
+
+export interface GameWithExportDetails {
+  id: string
+  playerId: string
+  fixtureId: string
+  opponentName: string
+  isComplete: boolean
+  playerWon: boolean | null
+  playerStarted: boolean
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  player: Player
+  fixture: {
+    id: string
+    seasonId: string
+    date: string
+    opponentTeam: string
+    isHome: boolean
+    venue: string | null
+    notes: string | null
+    createdAt: string
+    updatedAt: string
+    season: Season | null
+  }
+  legs: Leg[]
+}
+
+export function getCompletedGamesForExport(filters?: {
+  seasonId?: string
+  playerId?: string
+  fixtureId?: string
+}): GameWithExportDetails[] {
+  const db = getDb()
+  try {
+    let query = `
+      SELECT
+        g.*,
+        p.id as player_id,
+        p.name as player_name,
+        p.avatarUrl as player_avatarUrl,
+        p.isActive as player_isActive,
+        p.dartModel as player_dartModel,
+        p.stemLength as player_stemLength,
+        p.flightType as player_flightType,
+        p.createdAt as player_createdAt,
+        p.updatedAt as player_updatedAt,
+        f.id as fixture_id,
+        f.seasonId as fixture_seasonId,
+        f.date as fixture_date,
+        f.opponentTeam as fixture_opponentTeam,
+        f.isHome as fixture_isHome,
+        f.venue as fixture_venue,
+        f.notes as fixture_notes,
+        f.createdAt as fixture_createdAt,
+        f.updatedAt as fixture_updatedAt,
+        s.id as season_id,
+        s.name as season_name,
+        s.startDate as season_startDate,
+        s.endDate as season_endDate,
+        s.isCurrent as season_isCurrent,
+        s.createdAt as season_createdAt,
+        s.updatedAt as season_updatedAt
+      FROM Game g
+      LEFT JOIN Player p ON g.playerId = p.id
+      LEFT JOIN Fixture f ON g.fixtureId = f.id
+      LEFT JOIN Season s ON f.seasonId = s.id
+      WHERE g.isComplete = 1
+    `
+
+    const params: any[] = []
+
+    if (filters?.playerId) {
+      query += ' AND g.playerId = ?'
+      params.push(filters.playerId)
+    }
+
+    if (filters?.fixtureId) {
+      query += ' AND g.fixtureId = ?'
+      params.push(filters.fixtureId)
+    } else if (filters?.seasonId) {
+      query += ' AND f.seasonId = ?'
+      params.push(filters.seasonId)
+    }
+
+    query += ' ORDER BY g.completedAt DESC'
+
+    const gameRows = db.prepare(query).all(...params)
+
+    return gameRows.map(row => {
+      const legs = db.prepare('SELECT * FROM Leg WHERE gameId = ?').all(row.id).map(leg => ({
+        ...leg,
+        playerStarted: Boolean(leg.playerStarted),
+        playerWon: leg.playerWon === null ? null : Boolean(leg.playerWon),
+      }))
+
+      return {
+        id: row.id,
+        playerId: row.playerId,
+        fixtureId: row.fixtureId,
+        opponentName: row.opponentName,
+        isComplete: Boolean(row.isComplete),
+        playerWon: row.playerWon === null ? null : Boolean(row.playerWon),
+        playerStarted: Boolean(row.playerStarted),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        completedAt: row.completedAt,
+        player: {
+          id: row.player_id,
+          name: row.player_name,
+          avatarUrl: row.player_avatarUrl,
+          isActive: Boolean(row.player_isActive),
+          dartModel: row.player_dartModel,
+          stemLength: row.player_stemLength,
+          flightType: row.player_flightType,
+          createdAt: row.player_createdAt,
+          updatedAt: row.player_updatedAt,
+        },
+        fixture: {
+          id: row.fixture_id,
+          seasonId: row.fixture_seasonId,
+          date: row.fixture_date,
+          opponentTeam: row.fixture_opponentTeam,
+          isHome: Boolean(row.fixture_isHome),
+          venue: row.fixture_venue,
+          notes: row.fixture_notes,
+          createdAt: row.fixture_createdAt,
+          updatedAt: row.fixture_updatedAt,
+          season: row.season_id ? {
+            id: row.season_id,
+            name: row.season_name,
+            startDate: row.season_startDate,
+            endDate: row.season_endDate,
+            isCurrent: Boolean(row.season_isCurrent),
+            createdAt: row.season_createdAt,
+            updatedAt: row.season_updatedAt,
+          } : null
+        },
+        legs
+      }
+    }) as GameWithExportDetails[]
+  } finally {
+    db.close()
+  }
+}
+
 // Export the db getter for custom queries if needed
 export { getDb, generateId, now }
