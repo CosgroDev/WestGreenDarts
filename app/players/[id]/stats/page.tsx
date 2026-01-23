@@ -6,6 +6,7 @@ import { TrendingUp, Trophy, Target, Percent, TrendingDown } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
+import { ExportButton } from '@/components/export-button'
 
 interface PageProps {
   params: {
@@ -47,12 +48,26 @@ export default async function PlayerStatsPage({ params }: PageProps) {
 
       <main className="min-h-screen lg:pl-64 pt-16 lg:pt-0">
         <div className="container mx-auto p-4 lg:p-8">
-          <Button variant="ghost" size="sm" asChild className="mb-4">
-            <Link href="/players">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Players
-            </Link>
-          </Button>
+          <div className="flex items-center justify-between mb-4">
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/players">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Players
+              </Link>
+            </Button>
+            {stats && stats.totalGames > 0 && (
+              <div className="flex gap-2">
+                <ExportButton
+                  endpoint={`/api/export/players?playerId=${params.id}`}
+                  label="Export Stats"
+                />
+                <ExportButton
+                  endpoint={`/api/export/games?playerId=${params.id}`}
+                  label="Export Games"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="mb-8">
             <h1 className="text-3xl lg:text-4xl font-bold text-primary mb-2">

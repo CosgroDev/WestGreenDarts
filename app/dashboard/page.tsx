@@ -4,6 +4,7 @@ import { Users, Calendar, Trophy, TrendingUp, Award, Target } from 'lucide-react
 import { TopPerformers } from '@/components/dashboard/top-performers'
 import { RecentGames } from '@/components/dashboard/recent-games'
 import { UpcomingFixtures } from '@/components/dashboard/upcoming-fixtures'
+import { ExportButton } from '@/components/export-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,13 +33,27 @@ export default async function DashboardPage() {
       {/* Main Content */}
       <main className="min-h-screen lg:pl-64 pt-16 lg:pt-0">
         <div className="container mx-auto p-4 lg:p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl lg:text-4xl font-bold text-primary mb-2">
-              Dashboard
-            </h1>
-            <p className="text-muted-foreground">
-              Welcome to West Green Darts team management
-            </p>
+          <div className="mb-8 flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl lg:text-4xl font-bold text-primary mb-2">
+                Dashboard
+              </h1>
+              <p className="text-muted-foreground">
+                Welcome to West Green Darts team management
+              </p>
+            </div>
+            {hasData && (
+              <div className="flex gap-2">
+                <ExportButton
+                  endpoint="/api/export/team"
+                  label="Export Team Stats"
+                />
+                <ExportButton
+                  endpoint="/api/export/games"
+                  label="Export All Games"
+                />
+              </div>
+            )}
           </div>
 
           {/* Quick Stats */}
