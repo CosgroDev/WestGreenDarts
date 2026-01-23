@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getPlayerById, updatePlayer, deletePlayer } from '@/lib/db-direct'
 
 // GET single player
 export async function GET(
@@ -7,18 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const player = await prisma.player.findUnique({
-      where: { id: params.id },
-      include: {
-        statistics: {
-          orderBy: { updatedAt: 'desc' },
-        },
-        games: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        },
-      },
-    })
+    const player = getPlayerById(params.id)
 
     if (!player) {
       return NextResponse.json(
@@ -53,16 +42,13 @@ export async function PUT(
       )
     }
 
-    const player = await prisma.player.update({
-      where: { id: params.id },
-      data: {
-        name: name.trim(),
-        avatarUrl: avatarUrl || null,
-        dartModel: dartModel || null,
-        stemLength: stemLength || null,
-        flightType: flightType || null,
-        isActive: isActive !== undefined ? isActive : true,
-      },
+    const player = updatePlayer(params.id, {
+      name: name.trim(),
+      avatarUrl: avatarUrl || null,
+      dartModel: dartModel || null,
+      stemLength: stemLength || null,
+      flightType: flightType || null,
+      isActive: isActive !== undefined ? isActive : true,
     })
 
     return NextResponse.json(player)
@@ -81,9 +67,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.player.delete({
-      where: { id: params.id },
-    })
+    deletePlayer(params.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

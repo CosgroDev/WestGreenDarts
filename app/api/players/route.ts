@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getAllPlayers, createPlayer } from '@/lib/db-direct'
 
 // GET all players
 export async function GET() {
   try {
-    const players = await prisma.player.findMany({
-      orderBy: [
-        { isActive: 'desc' },
-        { name: 'asc' },
-      ],
+    const players = getAllPlayers()
+
+    // Sort by isActive desc, then name asc
+    players.sort((a, b) => {
+      if (a.isActive !== b.isActive) {
+        return a.isActive ? -1 : 1
+      }
+      return a.name.localeCompare(b.name)
     })
 
     return NextResponse.json(players)
@@ -25,7 +28,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, avatarUrl, dartModel, stemLength, flightType, isActive } = body
+    const { name, avatarUrl, dartModel, stemLength, flightType } = body
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -34,15 +37,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const player = await prisma.player.create({
-      data: {
-        name: name.trim(),
-        avatarUrl: avatarUrl || null,
-        dartModel: dartModel || null,
-        stemLength: stemLength || null,
-        flightType: flightType || null,
-        isActive: isActive !== undefined ? isActive : true,
-      },
+    const player = createPlayer({
+      name: name.trim(),
+      avatarUrl: avatarUrl || undefined,
+      dartModel: dartModel || undefined,
+      stemLength: stemLength || undefined,
+      flightType: flightType || undefined,
     })
 
     return NextResponse.json(player, { status: 201 })
