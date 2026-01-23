@@ -330,11 +330,45 @@ export async function updatePlayerStatistics(gameId: string): Promise<void> {
   let allTimeStats = getPlayerStatistics(game.playerId, null)
 
   if (!allTimeStats) {
-    // Create new all-time stats
+    // Create new all-time stats - use aggregateStatistics to ensure all fields are present
+    const emptyStats: CalculatedStats = {
+      totalLegs: 0,
+      legsWon: 0,
+      totalGames: 0,
+      gamesWon: 0,
+      threeDartAverage: 0,
+      firstNineAverage: 0,
+      scores60Plus: 0,
+      scores80Plus: 0,
+      scores100Plus: 0,
+      scores120Plus: 0,
+      scores140Plus: 0,
+      scores170Plus: 0,
+      total180s: 0,
+      highFinish: 0,
+      finishes100Plus: 0,
+      bestLeg: null,
+      worstLeg: null,
+      checkoutPercentage: 0,
+      checkoutPrediction: 0,
+      keepPercentage: 0,
+      keepPrediction: 0,
+      breakPercentage: 0,
+      breakPrediction: 0,
+      totalVisits: 0,
+      totalPointsScored: 0,
+      checkoutAttempts: 0,
+      successfulCheckouts: 0,
+      legsStarted: 0,
+      legsWonWhenStarted: 0,
+      legsNotStarted: 0,
+      legsWonWhenNotStarted: 0,
+    }
+    const aggregated = aggregateStatistics(emptyStats, gameStats)
     upsertPlayerStatistics({
       playerId: game.playerId,
       seasonId: null,
-      ...gameStats as any,
+      ...aggregated,
     })
   } else {
     // Update existing all-time stats
@@ -351,11 +385,45 @@ export async function updatePlayerStatistics(gameId: string): Promise<void> {
     let seasonStats = getPlayerStatistics(game.playerId, game.fixture.season.id)
 
     if (!seasonStats) {
-      // Create new season stats
+      // Create new season stats - use aggregateStatistics to ensure all fields are present
+      const emptyStats: CalculatedStats = {
+        totalLegs: 0,
+        legsWon: 0,
+        totalGames: 0,
+        gamesWon: 0,
+        threeDartAverage: 0,
+        firstNineAverage: 0,
+        scores60Plus: 0,
+        scores80Plus: 0,
+        scores100Plus: 0,
+        scores120Plus: 0,
+        scores140Plus: 0,
+        scores170Plus: 0,
+        total180s: 0,
+        highFinish: 0,
+        finishes100Plus: 0,
+        bestLeg: null,
+        worstLeg: null,
+        checkoutPercentage: 0,
+        checkoutPrediction: 0,
+        keepPercentage: 0,
+        keepPrediction: 0,
+        breakPercentage: 0,
+        breakPrediction: 0,
+        totalVisits: 0,
+        totalPointsScored: 0,
+        checkoutAttempts: 0,
+        successfulCheckouts: 0,
+        legsStarted: 0,
+        legsWonWhenStarted: 0,
+        legsNotStarted: 0,
+        legsWonWhenNotStarted: 0,
+      }
+      const aggregated = aggregateStatistics(emptyStats, gameStats)
       upsertPlayerStatistics({
         playerId: game.playerId,
         seasonId: game.fixture.season.id,
-        ...gameStats as any,
+        ...aggregated,
       })
     } else {
       // Update existing season stats
