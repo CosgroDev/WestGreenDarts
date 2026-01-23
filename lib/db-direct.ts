@@ -1889,5 +1889,111 @@ export function getCompletedGamesForExport(filters?: {
   }
 }
 
+// ============================================================================
+// UTILITY/COUNT FUNCTIONS
+// ============================================================================
+
+export function countActivePlayers(): number {
+  const db = getDb()
+  try {
+    const result = db.prepare('SELECT COUNT(*) as count FROM Player WHERE isActive = 1').get() as { count: number }
+    return result.count
+  } finally {
+    db.close()
+  }
+}
+
+export function countFixtures(seasonId?: string): number {
+  const db = getDb()
+  try {
+    if (seasonId) {
+      const result = db.prepare('SELECT COUNT(*) as count FROM Fixture WHERE seasonId = ?').get(seasonId) as { count: number }
+      return result.count
+    } else {
+      const result = db.prepare('SELECT COUNT(*) as count FROM Fixture').get() as { count: number }
+      return result.count
+    }
+  } finally {
+    db.close()
+  }
+}
+
+export function countFixturesWithCompletedGames(seasonId?: string): number {
+  const db = getDb()
+  try {
+    let query = `
+      SELECT COUNT(DISTINCT f.id) as count
+      FROM Fixture f
+      INNER JOIN Game g ON f.id = g.fixtureId
+      WHERE g.isComplete = 1
+    `
+    if (seasonId) {
+      query += ' AND f.seasonId = ?'
+      const result = db.prepare(query).get(seasonId) as { count: number }
+      return result.count
+    } else {
+      const result = db.prepare(query).get() as { count: number }
+      return result.count
+    }
+  } finally {
+    db.close()
+  }
+}
+
+export function getUpcomingFixtures(seasonId?: string, limit: number = 5): FixtureWithSeason[] {
+  const db = getDb()
+  try {
+    const now = new Date().toISOString()
+    let query = `
+      SELECT
+        f.*,
+        s.id as season_id,
+        s.name as season_name,
+        s.startDate as season_startDate,
+        s.endDate as season_endDate,
+        s.isCurrent as season_isCurrent,
+        s.createdAt as season_createdAt,
+        s.updatedAt as season_updatedAt
+      FROM Fixture f
+      LEFT JOIN Season s ON f.seasonId = s.id
+      WHERE f.date >= ?
+    `
+    const params: any[] = [now]
+
+    if (seasonId) {
+      query += ' AND f.seasonId = ?'
+      params.push(seasonId)
+    }
+
+    query += ' ORDER BY f.date ASC LIMIT ?'
+    params.push(limit)
+
+    const rows = db.prepare(query).all(...params)
+
+    return rows.map(row => ({
+      id: row.id,
+      seasonId: row.seasonId,
+      date: row.date,
+      opponentTeam: row.opponentTeam,
+      isHome: Boolean(row.isHome),
+      venue: row.venue,
+      notes: row.notes,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      season: {
+        id: row.season_id,
+        name: row.season_name,
+        startDate: row.season_startDate,
+        endDate: row.season_endDate,
+        isCurrent: Boolean(row.season_isCurrent),
+        createdAt: row.season_createdAt,
+        updatedAt: row.season_updatedAt,
+      }
+    })) as FixtureWithSeason[]
+  } finally {
+    db.close()
+  }
+}
+
 // Export the db getter for custom queries if needed
 export { getDb, generateId, now }
