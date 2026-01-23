@@ -1,6 +1,6 @@
 import { Navigation } from '@/components/navigation'
 import { PlayerForm } from '@/components/player-form'
-import { prisma } from '@/lib/prisma'
+import { getPlayerById } from '@/lib/db-direct'
 import { notFound } from 'next/navigation'
 
 interface PageProps {
@@ -11,9 +11,7 @@ interface PageProps {
 
 async function getPlayer(id: string) {
   try {
-    const player = await prisma.player.findUnique({
-      where: { id },
-    })
+    const player = getPlayerById(id)
     return player
   } catch (error) {
     console.error('Error fetching player:', error)

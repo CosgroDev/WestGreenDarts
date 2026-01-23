@@ -1,4 +1,10 @@
-import { prisma } from './prisma'
+import {
+  getCompletedGamesForPlayer,
+  getGameWithFixtureAndSeason,
+  getPlayerStatistics,
+  upsertPlayerStatistics,
+  type GameWithLegsAndVisits,
+} from './db-direct'
 
 interface Visit {
   id: string
@@ -263,21 +269,7 @@ export function aggregateStatistics(
  * Calculate all statistics for a player across all their games
  */
 export async function calculatePlayerAllTimeStatistics(playerId: string): Promise<CalculatedStats> {
-  const games = await prisma.game.findMany({
-    where: {
-      playerId,
-      isComplete: true,
-    },
-    include: {
-      legs: {
-        include: {
-          visits: {
-            orderBy: { visitNumber: 'asc' },
-          },
-        },
-      },
-    },
-  })
+  const games = getCompletedGamesForPlayer(playerId)
 
   let allTimeStats: CalculatedStats = {
     totalLegs: 0,
@@ -314,7 +306,7 @@ export async function calculatePlayerAllTimeStatistics(playerId: string): Promis
   }
 
   for (const game of games) {
-    const gameStats = calculateGameStatistics(game)
+    const gameStats = calculateGameStatistics(game as any)
     allTimeStats = aggregateStatistics(allTimeStats, gameStats)
   }
 
@@ -325,81 +317,121 @@ export async function calculatePlayerAllTimeStatistics(playerId: string): Promis
  * Update player statistics after a game is completed
  */
 export async function updatePlayerStatistics(gameId: string): Promise<void> {
-  const game = await prisma.game.findUnique({
-    where: { id: gameId },
-    include: {
-      legs: {
-        include: {
-          visits: {
-            orderBy: { visitNumber: 'asc' },
-          },
-        },
-      },
-      fixture: {
-        include: {
-          season: true,
-        },
-      },
-    },
-  })
+  const game = getGameWithFixtureAndSeason(gameId)
 
   if (!game || !game.isComplete) {
     return
   }
 
   // Calculate statistics for this game
-  const gameStats = calculateGameStatistics(game)
+  const gameStats = calculateGameStatistics(game as any)
 
   // Get or create all-time statistics
-  let allTimeStats = await prisma.playerStatistics.findUnique({
-    where: {
-      playerId_seasonId: {
-        playerId: game.playerId,
-        seasonId: null,
-      },
-    },
-  })
+  let allTimeStats = getPlayerStatistics(game.playerId, null)
 
   if (!allTimeStats) {
-    allTimeStats = await prisma.playerStatistics.create({
-      data: {
-        playerId: game.playerId,
-        seasonId: null,
-        ...gameStats,
-      },
+    // Create new all-time stats - use aggregateStatistics to ensure all fields are present
+    const emptyStats: CalculatedStats = {
+      totalLegs: 0,
+      legsWon: 0,
+      totalGames: 0,
+      gamesWon: 0,
+      threeDartAverage: 0,
+      firstNineAverage: 0,
+      scores60Plus: 0,
+      scores80Plus: 0,
+      scores100Plus: 0,
+      scores120Plus: 0,
+      scores140Plus: 0,
+      scores170Plus: 0,
+      total180s: 0,
+      highFinish: 0,
+      finishes100Plus: 0,
+      bestLeg: null,
+      worstLeg: null,
+      checkoutPercentage: 0,
+      checkoutPrediction: 0,
+      keepPercentage: 0,
+      keepPrediction: 0,
+      breakPercentage: 0,
+      breakPrediction: 0,
+      totalVisits: 0,
+      totalPointsScored: 0,
+      checkoutAttempts: 0,
+      successfulCheckouts: 0,
+      legsStarted: 0,
+      legsWonWhenStarted: 0,
+      legsNotStarted: 0,
+      legsWonWhenNotStarted: 0,
+    }
+    const aggregated = aggregateStatistics(emptyStats, gameStats)
+    upsertPlayerStatistics({
+      playerId: game.playerId,
+      seasonId: null,
+      ...aggregated,
     })
   } else {
+    // Update existing all-time stats
     const aggregated = aggregateStatistics(allTimeStats as any, gameStats)
-    await prisma.playerStatistics.update({
-      where: { id: allTimeStats.id },
-      data: aggregated,
+    upsertPlayerStatistics({
+      playerId: game.playerId,
+      seasonId: null,
+      ...aggregated,
     })
   }
 
   // Get or create season statistics
-  if (game.fixture.seasonId) {
-    let seasonStats = await prisma.playerStatistics.findUnique({
-      where: {
-        playerId_seasonId: {
-          playerId: game.playerId,
-          seasonId: game.fixture.seasonId,
-        },
-      },
-    })
+  if (game.fixture?.season?.id) {
+    let seasonStats = getPlayerStatistics(game.playerId, game.fixture.season.id)
 
     if (!seasonStats) {
-      await prisma.playerStatistics.create({
-        data: {
-          playerId: game.playerId,
-          seasonId: game.fixture.seasonId,
-          ...gameStats,
-        },
+      // Create new season stats - use aggregateStatistics to ensure all fields are present
+      const emptyStats: CalculatedStats = {
+        totalLegs: 0,
+        legsWon: 0,
+        totalGames: 0,
+        gamesWon: 0,
+        threeDartAverage: 0,
+        firstNineAverage: 0,
+        scores60Plus: 0,
+        scores80Plus: 0,
+        scores100Plus: 0,
+        scores120Plus: 0,
+        scores140Plus: 0,
+        scores170Plus: 0,
+        total180s: 0,
+        highFinish: 0,
+        finishes100Plus: 0,
+        bestLeg: null,
+        worstLeg: null,
+        checkoutPercentage: 0,
+        checkoutPrediction: 0,
+        keepPercentage: 0,
+        keepPrediction: 0,
+        breakPercentage: 0,
+        breakPrediction: 0,
+        totalVisits: 0,
+        totalPointsScored: 0,
+        checkoutAttempts: 0,
+        successfulCheckouts: 0,
+        legsStarted: 0,
+        legsWonWhenStarted: 0,
+        legsNotStarted: 0,
+        legsWonWhenNotStarted: 0,
+      }
+      const aggregated = aggregateStatistics(emptyStats, gameStats)
+      upsertPlayerStatistics({
+        playerId: game.playerId,
+        seasonId: game.fixture.season.id,
+        ...aggregated,
       })
     } else {
+      // Update existing season stats
       const aggregated = aggregateStatistics(seasonStats as any, gameStats)
-      await prisma.playerStatistics.update({
-        where: { id: seasonStats.id },
-        data: aggregated,
+      upsertPlayerStatistics({
+        playerId: game.playerId,
+        seasonId: game.fixture.season.id,
+        ...aggregated,
       })
     }
   }

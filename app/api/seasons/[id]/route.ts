@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSeasonWithFixtures, updateSeason, deleteSeason } from '@/lib/db-direct'
 
 // GET single season
 export async function GET(
@@ -7,14 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const season = await prisma.season.findUnique({
-      where: { id: params.id },
-      include: {
-        fixtures: {
-          orderBy: { date: 'asc' },
-        },
-      },
-    })
+    const season = getSeasonWithFixtures(params.id)
 
     if (!season) {
       return NextResponse.json(
@@ -49,22 +42,11 @@ export async function PUT(
       )
     }
 
-    // If this season is being marked as current, unset other current seasons
-    if (isCurrent) {
-      await prisma.season.updateMany({
-        where: { isCurrent: true, id: { not: params.id } },
-        data: { isCurrent: false },
-      })
-    }
-
-    const season = await prisma.season.update({
-      where: { id: params.id },
-      data: {
-        name: name.trim(),
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-        isCurrent: isCurrent || false,
-      },
+    const season = updateSeason(params.id, {
+      name: name.trim(),
+      startDate: startDate || null,
+      endDate: endDate || null,
+      isCurrent: isCurrent || false,
     })
 
     return NextResponse.json(season)
@@ -83,10 +65,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.season.delete({
-      where: { id: params.id },
-    })
-
+    deleteSeason(params.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting season:', error)

@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import {
+  getLegById,
+  getLegsForGame,
+  createVisit,
+  updateLeg,
+  updateGame,
+  createLeg,
+  getGameWithFullDetails,
+} from '@/lib/db-direct'
 import { updatePlayerStatistics } from '@/lib/statistics-calculator'
 
 // POST record a visit (3 darts)
@@ -18,21 +26,8 @@ export async function POST(
       )
     }
 
-    // Get the current leg
-    const leg = await prisma.leg.findUnique({
-      where: { id: legId },
-      include: {
-        visits: {
-          orderBy: { visitNumber: 'desc' },
-          take: 1,
-        },
-        game: {
-          include: {
-            legs: true,
-          },
-        },
-      },
-    })
+    // Get the current leg with visits
+    const leg = getLegById(legId)
 
     if (!leg) {
       return NextResponse.json(
@@ -52,7 +47,9 @@ export async function POST(
     const totalScore = (dart1 || 0) + (dart2 || 0) + (dart3 || 0)
 
     // Get next visit number
-    const nextVisitNumber = leg.visits.length > 0 ? leg.visits[0].visitNumber + 1 : 1
+    const nextVisitNumber = leg.visits.length > 0
+      ? Math.max(...leg.visits.map(v => v.visitNumber)) + 1
+      : 1
 
     // Calculate new remaining score
     const currentScore = isPlayer ? leg.playerScore : leg.opponentScore
@@ -61,59 +58,50 @@ export async function POST(
     // Check for bust (went below 0 or landed on 1)
     const isBust = newScore < 0 || newScore === 1
 
-    // Check for valid checkout (exactly 0 with last dart being a double)
-    // For now, we'll simplify and just check if newScore is 0
+    // Check for valid checkout (exactly 0)
     const isCheckout = newScore === 0 && !isBust
 
     // Create the visit
-    const visit = await prisma.visit.create({
-      data: {
-        legId,
-        visitNumber: nextVisitNumber,
-        isPlayer,
-        dart1,
-        dart2,
-        dart3,
-        totalScore,
-        isCheckout,
-        checkoutScore: isCheckout ? currentScore : null,
-      },
+    createVisit({
+      legId,
+      visitNumber: nextVisitNumber,
+      isPlayer,
+      dart1,
+      dart2,
+      dart3,
+      totalScore,
+      isCheckout,
+      checkoutScore: isCheckout ? currentScore : undefined,
     })
 
     // Update leg score if not bust
     if (!isBust) {
       if (isPlayer) {
-        await prisma.leg.update({
-          where: { id: legId },
-          data: {
-            playerScore: newScore,
-            totalDarts: { increment: 3 },
-          },
+        updateLeg(legId, {
+          playerScore: newScore,
+          totalDarts: leg.totalDarts + 3,
         })
       } else {
-        await prisma.leg.update({
-          where: { id: legId },
-          data: {
-            opponentScore: newScore,
-          },
+        updateLeg(legId, {
+          opponentScore: newScore,
         })
       }
     }
 
     // Check if leg is won
     if (isCheckout) {
-      await prisma.leg.update({
-        where: { id: legId },
-        data: {
-          playerWon: isPlayer,
-          completedAt: new Date(),
-        },
+      const now = new Date().toISOString()
+      updateLeg(legId, {
+        playerWon: isPlayer,
+        completedAt: now,
       })
 
-      // Check if game is complete (Best of 2)
-      const game = leg.game
-      const completedLegs = game.legs.filter((l) => l.playerWon !== null || l.id === legId)
-      const playerWins = completedLegs.filter((l) =>
+      // Get all legs for the game to check if game is complete
+      const allLegs = getLegsForGame(leg.gameId)
+      const completedLegs = allLegs.filter(l =>
+        l.playerWon !== null || l.id === legId
+      )
+      const playerWins = completedLegs.filter(l =>
         l.id === legId ? isPlayer : l.playerWon === true
       ).length
 
@@ -123,71 +111,45 @@ export async function POST(
       // - Both legs complete and it's 1-1 (draw)
       if (playerWins === 2) {
         // Player won 2-0 or 2-1
-        await prisma.game.update({
-          where: { id: game.id },
-          data: {
-            isComplete: true,
-            playerWon: true,
-            completedAt: new Date(),
-          },
+        updateGame(leg.gameId, {
+          isComplete: true,
+          playerWon: true,
+          completedAt: now,
         })
         // Update player statistics
-        await updatePlayerStatistics(game.id)
+        await updatePlayerStatistics(leg.gameId)
       } else if (completedLegs.length - playerWins === 2) {
         // Opponent won 2-0 or 2-1
-        await prisma.game.update({
-          where: { id: game.id },
-          data: {
-            isComplete: true,
-            playerWon: false,
-            completedAt: new Date(),
-          },
+        updateGame(leg.gameId, {
+          isComplete: true,
+          playerWon: false,
+          completedAt: now,
         })
         // Update player statistics
-        await updatePlayerStatistics(game.id)
+        await updatePlayerStatistics(leg.gameId)
       } else if (completedLegs.length === 2) {
         // Both legs complete, must be 1-1 draw
-        await prisma.game.update({
-          where: { id: game.id },
-          data: {
-            isComplete: true,
-            playerWon: null, // null indicates draw
-            completedAt: new Date(),
-          },
+        updateGame(leg.gameId, {
+          isComplete: true,
+          playerWon: null,
+          completedAt: now,
         })
         // Update player statistics
-        await updatePlayerStatistics(game.id)
-      } else if (game.legs.length === 1 && completedLegs.length === 1) {
+        await updatePlayerStatistics(leg.gameId)
+      } else if (allLegs.length === 1 && completedLegs.length === 1) {
         // First leg complete, create second leg
         // Alternate who starts
         const secondLegStarter = !leg.playerStarted
-        await prisma.leg.create({
-          data: {
-            gameId: game.id,
-            legNumber: 2,
-            playerScore: 501,
-            opponentScore: 501,
-            playerStarted: secondLegStarter,
-          },
+        createLeg({
+          gameId: leg.gameId,
+          legNumber: 2,
+          playerStarted: secondLegStarter,
         })
       }
     }
 
     // Return updated game state
-    const updatedGame = await prisma.game.findUnique({
-      where: { id: params.id },
-      include: {
-        player: true,
-        legs: {
-          orderBy: { legNumber: 'asc' },
-          include: {
-            visits: {
-              orderBy: { visitNumber: 'asc' },
-            },
-          },
-        },
-      },
-    })
+    const updatedGame = getGameWithFullDetails(params.id)
 
     return NextResponse.json(updatedGame)
   } catch (error) {

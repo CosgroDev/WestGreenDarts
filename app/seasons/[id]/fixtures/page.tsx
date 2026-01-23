@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Trophy, Plus, ArrowLeft, Home, Plane } from 'lucide-react'
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { getSeasonById, getAllFixturesWithRelations } from '@/lib/db-direct'
 import { formatDateTime } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 
@@ -17,20 +17,18 @@ export const dynamic = 'force-dynamic'
 
 async function getSeasonWithFixtures(id: string) {
   try {
-    const season = await prisma.season.findUnique({
-      where: { id },
-      include: {
-        fixtures: {
-          orderBy: { date: 'desc' },
-          include: {
-            _count: {
-              select: { games: true },
-            },
-          },
-        },
-      },
-    })
-    return season
+    const season = getSeasonById(id)
+    if (!season) return null
+
+    const allFixtures = getAllFixturesWithRelations()
+    const fixtures = allFixtures
+      .filter(f => f.seasonId === id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+    return {
+      ...season,
+      fixtures
+    }
   } catch (error) {
     console.error('Error fetching season:', error)
     return null

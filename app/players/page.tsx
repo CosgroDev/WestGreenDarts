@@ -4,17 +4,19 @@ import { Button } from '@/components/ui/button'
 import { PlayerCard } from '@/components/player-card'
 import { UserPlus } from 'lucide-react'
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { getAllPlayers } from '@/lib/db-direct'
 
 export const dynamic = 'force-dynamic'
 
 async function getPlayers() {
   try {
-    const players = await prisma.player.findMany({
-      orderBy: [
-        { isActive: 'desc' },
-        { name: 'asc' },
-      ],
+    const players = getAllPlayers()
+    // Sort by isActive desc, then name asc
+    players.sort((a, b) => {
+      if (a.isActive !== b.isActive) {
+        return a.isActive ? -1 : 1
+      }
+      return a.name.localeCompare(b.name)
     })
     return players
   } catch (error) {

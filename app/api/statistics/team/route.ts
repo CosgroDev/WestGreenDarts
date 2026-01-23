@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import {
+  getPlayerStatisticsWithRelations,
+  getCurrentSeason,
+  countActivePlayers,
+  countFixtures,
+  countFixturesWithCompletedGames,
+  getCompletedGamesForExport,
+  getUpcomingFixtures,
+} from '@/lib/db-direct'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,79 +15,28 @@ export async function GET(request: NextRequest) {
     const seasonId = searchParams.get('seasonId')
 
     // Fetch all player statistics
-    const playerStats = await prisma.playerStatistics.findMany({
-      where: {
-        seasonId: seasonId || null,
-        player: { isActive: true },
-      },
-      include: {
-        player: true,
-      },
+    const playerStats = getPlayerStatisticsWithRelations({
+      seasonId: seasonId || null,
+      activePlayersOnly: true,
     })
 
     // Get current season
-    const currentSeason = await prisma.season.findFirst({
-      where: { isCurrent: true },
-    })
+    const currentSeason = getCurrentSeason()
 
     // Count players
-    const totalPlayers = await prisma.player.count({
-      where: { isActive: true },
-    })
+    const totalPlayers = countActivePlayers()
 
     // Count fixtures
-    const totalFixtures = await prisma.fixture.count({
-      where: seasonId ? { seasonId } : {},
-    })
-
-    const fixturesCompleted = await prisma.fixture.count({
-      where: {
-        ...(seasonId && { seasonId }),
-        games: {
-          some: {
-            isComplete: true,
-          },
-        },
-      },
-    })
+    const totalFixtures = countFixtures(seasonId || undefined)
+    const fixturesCompleted = countFixturesWithCompletedGames(seasonId || undefined)
 
     // Fetch recent games
-    const recentGames = await prisma.game.findMany({
-      where: {
-        isComplete: true,
-        ...(seasonId && {
-          fixture: {
-            seasonId,
-          },
-        }),
-      },
-      include: {
-        player: true,
-        fixture: true,
-        legs: true,
-      },
-      orderBy: {
-        completedAt: 'desc',
-      },
-      take: 10,
-    })
+    const recentGames = getCompletedGamesForExport({
+      seasonId: seasonId || undefined,
+    }).slice(0, 10)
 
     // Fetch upcoming fixtures
-    const upcomingFixtures = await prisma.fixture.findMany({
-      where: {
-        ...(seasonId && { seasonId }),
-        date: {
-          gte: new Date(),
-        },
-      },
-      include: {
-        season: true,
-      },
-      orderBy: {
-        date: 'asc',
-      },
-      take: 5,
-    })
+    const upcomingFixtures = getUpcomingFixtures(seasonId || undefined, 5)
 
     // Aggregate team statistics
     const teamStats = {
@@ -186,7 +143,7 @@ export async function GET(request: NextRequest) {
           opponentName: game.opponentName,
           result: game.playerWon === true ? 'won' : game.playerWon === false ? 'lost' : 'draw',
           score: `${legsWon}-${legsLost}`,
-          date: game.completedAt?.toISOString() || game.createdAt.toISOString(),
+          date: game.completedAt || game.createdAt,
           fixtureId: game.fixtureId,
         }
       }),
@@ -195,7 +152,7 @@ export async function GET(request: NextRequest) {
       upcomingFixtures: upcomingFixtures.map((fixture) => ({
         id: fixture.id,
         opponentTeam: fixture.opponentTeam,
-        date: fixture.date.toISOString(),
+        date: fixture.date,
         isHome: fixture.isHome,
         venue: fixture.venue,
       })),

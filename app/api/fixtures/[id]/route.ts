@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getFixtureWithGames, updateFixtureWithSeason, deleteFixture } from '@/lib/db-direct'
 
 // GET single fixture
 export async function GET(
@@ -7,18 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const fixture = await prisma.fixture.findUnique({
-      where: { id: params.id },
-      include: {
-        season: true,
-        games: {
-          include: {
-            player: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    })
+    const fixture = getFixtureWithGames(params.id)
 
     if (!fixture) {
       return NextResponse.json(
@@ -60,19 +49,13 @@ export async function PUT(
       )
     }
 
-    const fixture = await prisma.fixture.update({
-      where: { id: params.id },
-      data: {
-        ...(seasonId && { seasonId }),
-        date: new Date(date),
-        opponentTeam: opponentTeam.trim(),
-        isHome: isHome !== undefined ? isHome : true,
-        venue: venue || null,
-        notes: notes || null,
-      },
-      include: {
-        season: true,
-      },
+    const fixture = updateFixtureWithSeason(params.id, {
+      ...(seasonId && { seasonId }),
+      date: date,
+      opponentTeam: opponentTeam.trim(),
+      isHome: isHome !== undefined ? isHome : true,
+      venue: venue || null,
+      notes: notes || null,
     })
 
     return NextResponse.json(fixture)
@@ -91,10 +74,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.fixture.delete({
-      where: { id: params.id },
-    })
-
+    deleteFixture(params.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting fixture:', error)

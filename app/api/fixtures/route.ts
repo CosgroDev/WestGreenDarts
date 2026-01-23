@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getAllFixturesWithRelations, createFixtureWithSeason } from '@/lib/db-direct'
 
 // GET all fixtures (optionally filtered by season)
 export async function GET(request: NextRequest) {
@@ -7,16 +7,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const seasonId = searchParams.get('seasonId')
 
-    const fixtures = await prisma.fixture.findMany({
-      where: seasonId ? { seasonId } : undefined,
-      orderBy: { date: 'desc' },
-      include: {
-        season: true,
-        _count: {
-          select: { games: true },
-        },
-      },
-    })
+    const fixtures = getAllFixturesWithRelations(seasonId || undefined)
 
     return NextResponse.json(fixtures)
   } catch (error) {
@@ -55,18 +46,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const fixture = await prisma.fixture.create({
-      data: {
-        seasonId,
-        date: new Date(date),
-        opponentTeam: opponentTeam.trim(),
-        isHome: isHome !== undefined ? isHome : true,
-        venue: venue || null,
-        notes: notes || null,
-      },
-      include: {
-        season: true,
-      },
+    const fixture = createFixtureWithSeason({
+      seasonId,
+      date: date,
+      opponentTeam: opponentTeam.trim(),
+      isHome: isHome !== undefined ? isHome : true,
+      venue: venue || undefined,
+      notes: notes || undefined,
     })
 
     return NextResponse.json(fixture, { status: 201 })
