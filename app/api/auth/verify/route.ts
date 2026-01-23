@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyPin } from '@/lib/auth'
+import { verifyPinDirect } from '@/lib/auth-direct'
 import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const isValid = await verifyPin(pin)
+    const isValid = await verifyPinDirect(pin)
 
     if (!isValid) {
       return NextResponse.json(
