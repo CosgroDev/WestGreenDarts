@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { updatePlayerStatistics } from '@/lib/statistics-calculator'
 
 // POST record a visit (3 darts)
 export async function POST(
@@ -130,6 +131,8 @@ export async function POST(
             completedAt: new Date(),
           },
         })
+        // Update player statistics
+        await updatePlayerStatistics(game.id)
       } else if (completedLegs.length - playerWins === 2) {
         // Opponent won 2-0 or 2-1
         await prisma.game.update({
@@ -140,6 +143,8 @@ export async function POST(
             completedAt: new Date(),
           },
         })
+        // Update player statistics
+        await updatePlayerStatistics(game.id)
       } else if (completedLegs.length === 2) {
         // Both legs complete, must be 1-1 draw
         await prisma.game.update({
@@ -150,6 +155,8 @@ export async function POST(
             completedAt: new Date(),
           },
         })
+        // Update player statistics
+        await updatePlayerStatistics(game.id)
       } else if (game.legs.length === 1 && completedLegs.length === 1) {
         // First leg complete, create second leg
         // Alternate who starts
