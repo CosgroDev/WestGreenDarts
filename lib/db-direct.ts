@@ -495,6 +495,223 @@ export function updateFixture(id: string, data: Partial<Omit<Fixture, 'id' | 'cr
   }
 }
 
+export interface FixtureWithSeasonAndGameCount extends FixtureWithSeason {
+  _count: {
+    games: number
+  }
+}
+
+export function getAllFixturesWithRelations(seasonId?: string): FixtureWithSeasonAndGameCount[] {
+  const db = getDb()
+  try {
+    let query = `
+      SELECT
+        f.*,
+        s.id as season_id,
+        s.name as season_name,
+        s.startDate as season_startDate,
+        s.endDate as season_endDate,
+        s.isCurrent as season_isCurrent,
+        s.createdAt as season_createdAt,
+        s.updatedAt as season_updatedAt,
+        COUNT(g.id) as gameCount
+      FROM Fixture f
+      LEFT JOIN Season s ON f.seasonId = s.id
+      LEFT JOIN Game g ON f.id = g.fixtureId
+    `
+    let params: any[] = []
+
+    if (seasonId) {
+      query += ' WHERE f.seasonId = ?'
+      params.push(seasonId)
+    }
+
+    query += ' GROUP BY f.id ORDER BY f.date DESC'
+
+    const rows = db.prepare(query).all(...params)
+
+    return rows.map(row => ({
+      id: row.id,
+      seasonId: row.seasonId,
+      date: row.date,
+      opponentTeam: row.opponentTeam,
+      isHome: Boolean(row.isHome),
+      venue: row.venue,
+      notes: row.notes,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      season: {
+        id: row.season_id,
+        name: row.season_name,
+        startDate: row.season_startDate,
+        endDate: row.season_endDate,
+        isCurrent: Boolean(row.season_isCurrent),
+        createdAt: row.season_createdAt,
+        updatedAt: row.season_updatedAt,
+      },
+      _count: {
+        games: row.gameCount || 0
+      }
+    })) as FixtureWithSeasonAndGameCount[]
+  } finally {
+    db.close()
+  }
+}
+
+export interface FixtureWithGames extends FixtureWithSeason {
+  games: Array<Game & { player: Player }>
+}
+
+export function getFixtureWithGames(id: string): FixtureWithGames | null {
+  const db = getDb()
+  try {
+    const fixture = db.prepare('SELECT * FROM Fixture WHERE id = ?').get(id)
+    if (!fixture) return null
+
+    const season = db.prepare('SELECT * FROM Season WHERE id = ?').get(fixture.seasonId)
+
+    const gamesRows = db.prepare(`
+      SELECT
+        g.*,
+        p.id as player_id,
+        p.name as player_name,
+        p.avatarUrl as player_avatarUrl,
+        p.isActive as player_isActive,
+        p.dartModel as player_dartModel,
+        p.stemLength as player_stemLength,
+        p.flightType as player_flightType,
+        p.createdAt as player_createdAt,
+        p.updatedAt as player_updatedAt
+      FROM Game g
+      LEFT JOIN Player p ON g.playerId = p.id
+      WHERE g.fixtureId = ?
+      ORDER BY g.createdAt DESC
+    `).all(id)
+
+    const games = gamesRows.map(row => ({
+      id: row.id,
+      fixtureId: row.fixtureId,
+      playerId: row.playerId,
+      opponentName: row.opponentName,
+      isComplete: Boolean(row.isComplete),
+      playerWon: row.playerWon !== null ? Boolean(row.playerWon) : null,
+      playerStarted: Boolean(row.playerStarted),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      completedAt: row.completedAt,
+      player: {
+        id: row.player_id,
+        name: row.player_name,
+        avatarUrl: row.player_avatarUrl,
+        isActive: Boolean(row.player_isActive),
+        dartModel: row.player_dartModel,
+        stemLength: row.player_stemLength,
+        flightType: row.player_flightType,
+        createdAt: row.player_createdAt,
+        updatedAt: row.player_updatedAt,
+      }
+    }))
+
+    return {
+      ...fixture,
+      isHome: Boolean(fixture.isHome),
+      season: {
+        ...season,
+        isCurrent: Boolean(season.isCurrent),
+      },
+      games
+    } as FixtureWithGames
+  } finally {
+    db.close()
+  }
+}
+
+export function createFixtureWithSeason(data: {
+  seasonId: string
+  date: string
+  opponentTeam: string
+  isHome?: boolean
+  venue?: string
+  notes?: string
+}): FixtureWithSeason {
+  const db = getDb()
+  try {
+    const id = generateId()
+    const timestamp = now()
+
+    db.prepare(`
+      INSERT INTO Fixture (id, seasonId, date, opponentTeam, isHome, venue, notes, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.seasonId,
+      data.date,
+      data.opponentTeam,
+      data.isHome ? 1 : 0,
+      data.venue || null,
+      data.notes || null,
+      timestamp,
+      timestamp
+    )
+
+    return getFixtureById(id)!
+  } finally {
+    db.close()
+  }
+}
+
+export function updateFixtureWithSeason(id: string, data: Partial<Omit<Fixture, 'id' | 'createdAt'>>): FixtureWithSeason {
+  const db = getDb()
+  try {
+    const updates: string[] = []
+    const values: any[] = []
+
+    if (data.seasonId !== undefined) {
+      updates.push('seasonId = ?')
+      values.push(data.seasonId)
+    }
+    if (data.date !== undefined) {
+      updates.push('date = ?')
+      values.push(data.date)
+    }
+    if (data.opponentTeam !== undefined) {
+      updates.push('opponentTeam = ?')
+      values.push(data.opponentTeam)
+    }
+    if (data.isHome !== undefined) {
+      updates.push('isHome = ?')
+      values.push(data.isHome ? 1 : 0)
+    }
+    if (data.venue !== undefined) {
+      updates.push('venue = ?')
+      values.push(data.venue)
+    }
+    if (data.notes !== undefined) {
+      updates.push('notes = ?')
+      values.push(data.notes)
+    }
+
+    updates.push('updatedAt = ?')
+    values.push(now())
+    values.push(id)
+
+    db.prepare(`UPDATE Fixture SET ${updates.join(', ')} WHERE id = ?`).run(...values)
+
+    return getFixtureById(id)!
+  } finally {
+    db.close()
+  }
+}
+
+export function deleteFixture(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM Fixture WHERE id = ?').run(id)
+  } finally {
+    db.close()
+  }
+}
+
 // ============================================================================
 // GAMES
 // ============================================================================
