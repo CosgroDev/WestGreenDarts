@@ -5,9 +5,10 @@ export function middleware(request: NextRequest) {
   const authCookie = request.cookies.get('auth')
   const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
   const isApiAuthRoute = request.nextUrl.pathname.startsWith('/api/auth')
+  const isInitRoute = request.nextUrl.pathname === '/api/init'
 
-  // Allow auth pages and API routes
-  if (isAuthPage || isApiAuthRoute) {
+  // Allow auth pages, API auth routes, and initialization route
+  if (isAuthPage || isApiAuthRoute || isInitRoute) {
     return NextResponse.next()
   }
 
