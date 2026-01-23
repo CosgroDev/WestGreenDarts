@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getPlayerStatistics } from '@/lib/db-direct'
 
 // GET player statistics
 export async function GET(
@@ -11,14 +11,7 @@ export async function GET(
     const seasonId = searchParams.get('seasonId')
 
     // Fetch statistics
-    const stats = await prisma.playerStatistics.findUnique({
-      where: {
-        playerId_seasonId: {
-          playerId: params.id,
-          seasonId: seasonId || null,
-        },
-      },
-    })
+    const stats = getPlayerStatistics(params.id, seasonId || null)
 
     if (!stats) {
       // Return empty statistics if none found
