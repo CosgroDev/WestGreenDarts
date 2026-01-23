@@ -1049,6 +1049,125 @@ export function deleteGame(id: string): void {
   }
 }
 
+export interface GameWithLegsAndVisits {
+  id: string
+  playerId: string
+  fixtureId: string
+  opponentName: string
+  isComplete: boolean
+  playerWon: boolean | null
+  playerStarted: boolean
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  legs: Array<{
+    id: string
+    gameId: string
+    legNumber: number
+    playerScore: number
+    opponentScore: number
+    playerWon: boolean | null
+    playerStarted: boolean
+    totalDarts: number
+    createdAt: string
+    updatedAt: string
+    completedAt: string | null
+    visits: Array<{
+      id: string
+      legId: string
+      visitNumber: number
+      isPlayer: boolean
+      dart1: number | null
+      dart2: number | null
+      dart3: number | null
+      totalScore: number
+      isCheckout: boolean
+      checkoutScore: number | null
+      createdAt: string
+    }>
+  }>
+}
+
+export function getCompletedGamesForPlayer(playerId: string): GameWithLegsAndVisits[] {
+  const db = getDb()
+  try {
+    const games = db.prepare('SELECT * FROM Game WHERE playerId = ? AND isComplete = 1').all(playerId)
+
+    return games.map((game: any) => {
+      const legs = db.prepare('SELECT * FROM Leg WHERE gameId = ? ORDER BY legNumber').all(game.id)
+
+      const legsWithVisits = legs.map((leg: any) => {
+        const visits = db.prepare('SELECT * FROM Visit WHERE legId = ? ORDER BY visitNumber').all(leg.id)
+
+        return {
+          ...leg,
+          playerStarted: Boolean(leg.playerStarted),
+          playerWon: leg.playerWon === null ? null : Boolean(leg.playerWon),
+          visits: visits.map((visit: any) => ({
+            ...visit,
+            isPlayer: Boolean(visit.isPlayer),
+            isCheckout: Boolean(visit.isCheckout),
+          }))
+        }
+      })
+
+      return {
+        ...game,
+        isComplete: Boolean(game.isComplete),
+        playerStarted: Boolean(game.playerStarted),
+        playerWon: game.playerWon === null ? null : Boolean(game.playerWon),
+        legs: legsWithVisits
+      }
+    }) as GameWithLegsAndVisits[]
+  } finally {
+    db.close()
+  }
+}
+
+export function getGameWithFixtureAndSeason(gameId: string): any {
+  const db = getDb()
+  try {
+    const game = db.prepare('SELECT * FROM Game WHERE id = ?').get(gameId)
+    if (!game) return null
+
+    const fixture = db.prepare('SELECT * FROM Fixture WHERE id = ?').get(game.fixtureId)
+    const season = fixture ? db.prepare('SELECT * FROM Season WHERE id = ?').get(fixture.seasonId) : null
+
+    const legs = db.prepare('SELECT * FROM Leg WHERE gameId = ? ORDER BY legNumber').all(gameId)
+    const legsWithVisits = legs.map((leg: any) => {
+      const visits = db.prepare('SELECT * FROM Visit WHERE legId = ? ORDER BY visitNumber').all(leg.id)
+      return {
+        ...leg,
+        playerStarted: Boolean(leg.playerStarted),
+        playerWon: leg.playerWon === null ? null : Boolean(leg.playerWon),
+        visits: visits.map((visit: any) => ({
+          ...visit,
+          isPlayer: Boolean(visit.isPlayer),
+          isCheckout: Boolean(visit.isCheckout),
+        }))
+      }
+    })
+
+    return {
+      ...game,
+      isComplete: Boolean(game.isComplete),
+      playerStarted: Boolean(game.playerStarted),
+      playerWon: game.playerWon === null ? null : Boolean(game.playerWon),
+      legs: legsWithVisits,
+      fixture: {
+        ...fixture,
+        isHome: Boolean(fixture?.isHome),
+        season: season ? {
+          ...season,
+          isCurrent: Boolean(season.isCurrent),
+        } : null
+      }
+    }
+  } finally {
+    db.close()
+  }
+}
+
 // ============================================================================
 // LEGS
 // ============================================================================

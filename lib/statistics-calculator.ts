@@ -1,4 +1,10 @@
-import { prisma } from './prisma'
+import {
+  getCompletedGamesForPlayer,
+  getGameWithFixtureAndSeason,
+  getPlayerStatistics,
+  upsertPlayerStatistics,
+  type GameWithLegsAndVisits,
+} from './db-direct'
 
 interface Visit {
   id: string
@@ -263,21 +269,7 @@ export function aggregateStatistics(
  * Calculate all statistics for a player across all their games
  */
 export async function calculatePlayerAllTimeStatistics(playerId: string): Promise<CalculatedStats> {
-  const games = await prisma.game.findMany({
-    where: {
-      playerId,
-      isComplete: true,
-    },
-    include: {
-      legs: {
-        include: {
-          visits: {
-            orderBy: { visitNumber: 'asc' },
-          },
-        },
-      },
-    },
-  })
+  const games = getCompletedGamesForPlayer(playerId)
 
   let allTimeStats: CalculatedStats = {
     totalLegs: 0,
@@ -314,7 +306,7 @@ export async function calculatePlayerAllTimeStatistics(playerId: string): Promis
   }
 
   for (const game of games) {
-    const gameStats = calculateGameStatistics(game)
+    const gameStats = calculateGameStatistics(game as any)
     allTimeStats = aggregateStatistics(allTimeStats, gameStats)
   }
 
@@ -325,81 +317,53 @@ export async function calculatePlayerAllTimeStatistics(playerId: string): Promis
  * Update player statistics after a game is completed
  */
 export async function updatePlayerStatistics(gameId: string): Promise<void> {
-  const game = await prisma.game.findUnique({
-    where: { id: gameId },
-    include: {
-      legs: {
-        include: {
-          visits: {
-            orderBy: { visitNumber: 'asc' },
-          },
-        },
-      },
-      fixture: {
-        include: {
-          season: true,
-        },
-      },
-    },
-  })
+  const game = getGameWithFixtureAndSeason(gameId)
 
   if (!game || !game.isComplete) {
     return
   }
 
   // Calculate statistics for this game
-  const gameStats = calculateGameStatistics(game)
+  const gameStats = calculateGameStatistics(game as any)
 
   // Get or create all-time statistics
-  let allTimeStats = await prisma.playerStatistics.findUnique({
-    where: {
-      playerId_seasonId: {
-        playerId: game.playerId,
-        seasonId: null,
-      },
-    },
-  })
+  let allTimeStats = getPlayerStatistics(game.playerId, null)
 
   if (!allTimeStats) {
-    allTimeStats = await prisma.playerStatistics.create({
-      data: {
-        playerId: game.playerId,
-        seasonId: null,
-        ...gameStats,
-      },
+    // Create new all-time stats
+    upsertPlayerStatistics({
+      playerId: game.playerId,
+      seasonId: null,
+      ...gameStats as any,
     })
   } else {
+    // Update existing all-time stats
     const aggregated = aggregateStatistics(allTimeStats as any, gameStats)
-    await prisma.playerStatistics.update({
-      where: { id: allTimeStats.id },
-      data: aggregated,
+    upsertPlayerStatistics({
+      playerId: game.playerId,
+      seasonId: null,
+      ...aggregated,
     })
   }
 
   // Get or create season statistics
-  if (game.fixture.seasonId) {
-    let seasonStats = await prisma.playerStatistics.findUnique({
-      where: {
-        playerId_seasonId: {
-          playerId: game.playerId,
-          seasonId: game.fixture.seasonId,
-        },
-      },
-    })
+  if (game.fixture?.season?.id) {
+    let seasonStats = getPlayerStatistics(game.playerId, game.fixture.season.id)
 
     if (!seasonStats) {
-      await prisma.playerStatistics.create({
-        data: {
-          playerId: game.playerId,
-          seasonId: game.fixture.seasonId,
-          ...gameStats,
-        },
+      // Create new season stats
+      upsertPlayerStatistics({
+        playerId: game.playerId,
+        seasonId: game.fixture.season.id,
+        ...gameStats as any,
       })
     } else {
+      // Update existing season stats
       const aggregated = aggregateStatistics(seasonStats as any, gameStats)
-      await prisma.playerStatistics.update({
-        where: { id: seasonStats.id },
-        data: aggregated,
+      upsertPlayerStatistics({
+        playerId: game.playerId,
+        seasonId: game.fixture.season.id,
+        ...aggregated,
       })
     }
   }
