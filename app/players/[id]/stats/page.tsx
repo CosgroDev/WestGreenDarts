@@ -1,6 +1,6 @@
 import { Navigation } from '@/components/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { prisma } from '@/lib/prisma'
+import { getPlayerById, getPlayerStatistics } from '@/lib/db-direct'
 import { notFound } from 'next/navigation'
 import { TrendingUp, Trophy, Target, Percent, TrendingDown } from 'lucide-react'
 import Link from 'next/link'
@@ -18,15 +18,15 @@ export const dynamic = 'force-dynamic'
 
 async function getPlayerWithStats(id: string) {
   try {
-    const player = await prisma.player.findUnique({
-      where: { id },
-      include: {
-        statistics: {
-          where: { seasonId: null }, // All-time stats
-        },
-      },
-    })
-    return player
+    const player = getPlayerById(id)
+    if (!player) return null
+
+    const stats = getPlayerStatistics(id, null) // All-time stats
+
+    return {
+      ...player,
+      statistics: stats ? [stats] : []
+    }
   } catch (error) {
     console.error('Error fetching player:', error)
     return null

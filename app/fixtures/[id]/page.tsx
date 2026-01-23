@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Trophy, ArrowLeft, Plus, Calendar, MapPin } from 'lucide-react'
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { getFixtureWithGames } from '@/lib/db-direct'
 import { formatDateTime } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 
@@ -17,19 +17,7 @@ export const dynamic = 'force-dynamic'
 
 async function getFixture(id: string) {
   try {
-    const fixture = await prisma.fixture.findUnique({
-      where: { id },
-      include: {
-        season: true,
-        games: {
-          include: {
-            player: true,
-            legs: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    })
+    const fixture = getFixtureWithGames(id)
     return fixture
   } catch (error) {
     console.error('Error fetching fixture:', error)

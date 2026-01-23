@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { initializePin } from '@/lib/auth'
+import { initializePinDirect } from '@/lib/auth-direct'
 
 // GET initialize the database
 export async function GET() {
   try {
     // Try to initialize the PIN
-    await initializePin()
+    await initializePinDirect()
 
     return NextResponse.json({
       success: true,

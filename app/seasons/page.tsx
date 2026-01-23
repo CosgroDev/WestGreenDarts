@@ -4,21 +4,14 @@ import { Button } from '@/components/ui/button'
 import { SeasonDialog } from '@/components/season-dialog'
 import { Calendar, Trophy } from 'lucide-react'
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { getAllSeasonsWithFixtureCount } from '@/lib/db-direct'
 import { formatDate } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
 async function getSeasons() {
   try {
-    const seasons = await prisma.season.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: {
-          select: { fixtures: true },
-        },
-      },
-    })
+    const seasons = getAllSeasonsWithFixtureCount()
     return seasons
   } catch (error) {
     console.error('Error fetching seasons:', error)
