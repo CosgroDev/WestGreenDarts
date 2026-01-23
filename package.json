@@ -5,9 +5,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run deploy:init && next build",
     "start": "next start",
     "lint": "next lint",
+    "deploy:init": "node scripts/deploy-init.js",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate"

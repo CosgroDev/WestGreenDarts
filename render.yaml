@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: west-green-darts
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: west-green-darts-data
+      mountPath: /opt/render/project/src/prisma
+      sizeGB: 1
