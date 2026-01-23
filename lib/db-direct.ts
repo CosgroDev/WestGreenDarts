@@ -281,6 +281,75 @@ export function updateSeason(id: string, data: Partial<Omit<Season, 'id' | 'crea
   }
 }
 
+export function deleteSeason(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM Season WHERE id = ?').run(id)
+  } finally {
+    db.close()
+  }
+}
+
+export interface SeasonWithFixtureCount extends Season {
+  _count: {
+    fixtures: number
+  }
+}
+
+export function getAllSeasonsWithFixtureCount(): SeasonWithFixtureCount[] {
+  const db = getDb()
+  try {
+    const rows = db.prepare(`
+      SELECT
+        s.*,
+        COUNT(f.id) as fixtureCount
+      FROM Season s
+      LEFT JOIN Fixture f ON s.id = f.seasonId
+      GROUP BY s.id
+      ORDER BY s.createdAt DESC
+    `).all()
+
+    return rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      isCurrent: Boolean(row.isCurrent),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      _count: {
+        fixtures: row.fixtureCount || 0
+      }
+    })) as SeasonWithFixtureCount[]
+  } finally {
+    db.close()
+  }
+}
+
+export interface SeasonWithFixtures extends Season {
+  fixtures: Fixture[]
+}
+
+export function getSeasonWithFixtures(id: string): SeasonWithFixtures | null {
+  const db = getDb()
+  try {
+    const season = getSeasonById(id)
+    if (!season) return null
+
+    const fixtures = db.prepare('SELECT * FROM Fixture WHERE seasonId = ? ORDER BY date ASC').all(id)
+
+    return {
+      ...season,
+      fixtures: fixtures.map(row => ({
+        ...row,
+        isHome: Boolean(row.isHome),
+      })) as Fixture[]
+    }
+  } finally {
+    db.close()
+  }
+}
+
 // ============================================================================
 // FIXTURES
 // ============================================================================
