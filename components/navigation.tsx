@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   X,
+  Settings,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/players', label: 'Players', icon: Users },
   { href: '/seasons', label: 'Seasons', icon: Calendar },
   { href: '/fixtures', label: 'Fixtures', icon: Trophy },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export function Navigation() {

@@ -12,16 +12,19 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const seasonId = searchParams.get('seasonId')
-
-    // Fetch all player statistics
-    const playerStats = getPlayerStatisticsWithRelations({
-      seasonId: seasonId || null,
-      activePlayersOnly: true,
-    })
+    const seasonIdParam = searchParams.get('seasonId')
 
     // Get current season
     const currentSeason = getCurrentSeason()
+
+    // Default to the active season when no explicit seasonId is provided
+    const seasonId = seasonIdParam || currentSeason?.id || null
+
+    // Fetch all player statistics
+    const playerStats = getPlayerStatisticsWithRelations({
+      seasonId,
+      activePlayersOnly: true,
+    })
 
     // Count players
     const totalPlayers = countActivePlayers()
